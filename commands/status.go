@@ -361,9 +361,6 @@ func prepare(r *git.Repository) *model {
 	h, _ := r.Head()
 	w, _ := r.Worktree()
 
-	// go-git w.Status is currently unreliable, so parse from "git status --porcelain" instead
-	// s, _ := w.Status()
-
 	status := exec.Command("git", "status", "--porcelain")
 	stdout, err := status.Output()
 	if err != nil {
@@ -409,16 +406,14 @@ func prepare(r *git.Repository) *model {
 
 	model := &model{
 		worktree: w,
-		// clean:    s.IsClean(),
-		clean: len(files) == 0,
-		keys:  keys,
-		help:  help.New(),
+		clean:    len(files) == 0,
+		keys:     keys,
+		help:     help.New(),
 		head: head{
 			name:     h.Name().Short(),
 			ref:      h.Hash().String(),
 			isbranch: h.Name().IsBranch(),
 		},
-		// files: make([]file, 0, len(s)),
 		files: files,
 	}
 
