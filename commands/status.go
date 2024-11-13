@@ -7,6 +7,7 @@ import (
 	"math"
 	"os/exec"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -115,6 +116,8 @@ type model struct {
 	help     help.Model
 	ready    bool
 	clean    bool
+	ahead    int
+	behind   int
 	head     head
 	files    []file
 	selected int
@@ -245,10 +248,20 @@ func (m model) viewHeader() string {
 		titleText = "Detached at " + color.Yellow.Foreground(m.head.ref[:7])
 	}
 
-	var subtitleText string
-
 	title := headerStyle.Render(titleText)
-	subtitle := headerStyle.Render(subtitleText)
+
+	var subtitle string
+	subtitleParts := make([]string, 0, 2)
+	if m.ahead > 0 {
+		subtitleParts = append(subtitleParts, fmt.Sprintf("ahead %d", m.ahead))
+	}
+	if m.behind > 0 {
+		subtitleParts = append(subtitleParts, fmt.Sprintf("behind %d", m.behind))
+	}
+	if len(subtitleParts) > 0 {
+		subtitleText := strings.Join(subtitleParts, " • ")
+		subtitle = headerStyle.Render(subtitleText)
+	}
 
 	// if title overflows, truncate, reset color, add elipses, and re-render
 	maxTitleWidth := m.viewport.Width - gloss.Width(subtitle)
@@ -361,19 +374,18 @@ func prepare(r *git.Repository) *model {
 	h, _ := r.Head()
 	w, _ := r.Worktree()
 
-	status := exec.Command("git", "status", "--porcelain")
-	stdout, err := status.Output()
+	gitstatus := exec.Command("git", "status", "--porcelain")
+	stdout, err := gitstatus.Output()
 	if err != nil {
 		panic("Failed to get output from \"git status\"")
 	}
 
+	// trim trailing newline
+	stdout = stdout[:len(stdout)-1]
+
 	lines := strings.Split(string(stdout), "\n")
 	files := make([]file, 0, len(lines))
 	for _, v := range lines {
-		if len(v) == 0 {
-			continue
-		}
-
 		staged := git.StatusCode(v[0])
 		tracked := git.StatusCode(v[1])
 		path := v[3:]
@@ -415,6 +427,28 @@ func prepare(r *git.Repository) *model {
 			isbranch: h.Name().IsBranch(),
 		},
 		files: files,
+	}
+
+	// TODO: clean this up
+	if model.head.isbranch {
+		gitremote := exec.Command("git", "remote")
+		stdout, err = gitremote.Output()
+		if err == nil {
+			// trim trailing newline
+			remote := string(stdout[:len(stdout)-1])
+
+			gitrevlist := exec.Command("git", "rev-list", "--left-right", "--count", model.head.name+"..."+remote+"/"+model.head.name)
+			stdout, err = gitrevlist.Output()
+			if err == nil {
+				// trim trailing newline
+				stdout := stdout[:len(stdout)-1]
+				log.Println(string(stdout))
+				ahead, _ := strconv.Atoi(string(stdout[0]))
+				model.ahead = ahead
+				behind, _ := strconv.Atoi(string(stdout[len(stdout)-1]))
+				model.behind = behind
+			}
+		}
 	}
 
 	emptyStyle := gloss.NewStyle()
