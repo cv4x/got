@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"os/exec"
 	"slices"
 	"strings"
 
@@ -261,7 +262,7 @@ func (m model) viewHeader() string {
 }
 
 func (m model) viewSideBorder(top, mid, bot string) string {
-	borderHeight := m.xy.height - 3
+	borderHeight := m.xy.height - 4
 
 	mid = mid + "\n"
 	// Not enough content to scroll, therefore no scrollbar
@@ -359,19 +360,66 @@ func (m model) viewFooter() string {
 func prepare(r *git.Repository) *model {
 	h, _ := r.Head()
 	w, _ := r.Worktree()
-	s, _ := w.Status()
+
+	// go-git w.Status is currently unreliable, so parse from "git status --porcelain" instead
+	// s, _ := w.Status()
+
+	status := exec.Command("git", "status", "--porcelain")
+	stdout, err := status.Output()
+	if err != nil {
+		panic("Failed to get output from \"git status\"")
+	}
+
+	lines := strings.Split(string(stdout), "\n")
+	files := make([]file, 0, len(lines))
+	for _, v := range lines {
+		if len(v) == 0 {
+			continue
+		}
+
+		staged := git.StatusCode(v[0])
+		tracked := git.StatusCode(v[1])
+		path := v[3:]
+		if staged == git.Untracked && tracked == git.Untracked {
+			files = append(files, file{
+				category: Untracked,
+				align:    gloss.Left,
+				path:     path,
+				status:   git.Untracked,
+			})
+			continue
+		}
+		if staged != git.Unmodified {
+			files = append(files, file{
+				category: Staged,
+				align:    gloss.Right,
+				path:     path,
+				status:   staged,
+			})
+		}
+		if tracked != git.Unmodified {
+			files = append(files, file{
+				category: Unstaged,
+				align:    gloss.Left,
+				path:     path,
+				status:   tracked,
+			})
+		}
+	}
 
 	model := &model{
 		worktree: w,
-		clean:    s.IsClean(),
-		keys:     keys,
-		help:     help.New(),
+		// clean:    s.IsClean(),
+		clean: len(files) == 0,
+		keys:  keys,
+		help:  help.New(),
 		head: head{
 			name:     h.Name().Short(),
 			ref:      h.Hash().String(),
 			isbranch: h.Name().IsBranch(),
 		},
-		files: make([]file, 0, len(s)),
+		// files: make([]file, 0, len(s)),
+		files: files,
 	}
 
 	emptyStyle := gloss.NewStyle()
@@ -380,40 +428,6 @@ func prepare(r *git.Repository) *model {
 	model.help.Styles.ShortKey = emptyStyle
 	model.help.Styles.ShortDesc = emptyStyle
 	model.help.ShowAll = true
-
-	if model.clean {
-		return model
-	}
-
-	for k, v := range s {
-		if s.IsUntracked(k) {
-			model.files = append(model.files, file{
-				category: Untracked,
-				align:    gloss.Left,
-				path:     k,
-				status:   git.Untracked,
-			})
-			continue
-		}
-		if v.Staging != git.Unmodified {
-			model.files = append(model.files, file{
-				category: Staged,
-				align:    gloss.Right,
-				path:     k,
-				status:   v.Staging,
-				extra:    v.Extra,
-			})
-		}
-		if v.Worktree != git.Unmodified {
-			model.files = append(model.files, file{
-				category: Unstaged,
-				align:    gloss.Left,
-				path:     k,
-				status:   v.Worktree,
-				extra:    v.Extra,
-			})
-		}
-	}
 
 	slices.SortFunc(model.files, func(a file, b file) int {
 		if a.category != b.category {
