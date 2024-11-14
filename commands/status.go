@@ -100,7 +100,7 @@ var keys = keyMap{
 	),
 	Submit: key.NewBinding(
 		key.WithKeys("enter", "y"),
-		key.WithHelp("y/ent", "confirm   "),
+		key.WithHelp("ent/y", "confirm   "),
 	),
 	Quit: key.NewBinding(
 		key.WithKeys("q", "esc", "ctrl+c"),
@@ -209,10 +209,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Handle keyboard and mouse events in the viewport
-	// m.viewport, cmd = m.viewport.Update(msg)
 	cmds = append(cmds, cmd)
-
 	return m, tea.Batch(cmds...)
 }
 
