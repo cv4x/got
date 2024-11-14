@@ -82,18 +82,26 @@ var (
 	MiddleGray    = renderers{fg(truecolor.middlegray), bg(truecolor.middlegray)}
 )
 
-var status = map[git.StatusCode]renderers{
-	git.Added:              Green,
-	git.Renamed:            Yellow,
-	git.Deleted:            Red,
-	git.Modified:           Red,
-	git.UpdatedButUnmerged: Magenta,
-	git.Unmodified:         White,
-	git.Untracked:          Red,
+var status = map[bool]map[git.StatusCode]renderers{
+	true: {
+		git.Added:              Green,
+		git.Deleted:            Red,
+		git.Modified:           Green,
+		git.Renamed:            Yellow,
+		git.UpdatedButUnmerged: Green,
+	},
+	false: {
+		git.Added:              Red,
+		git.Deleted:            Red,
+		git.Modified:           Red,
+		git.Renamed:            Yellow,
+		git.UpdatedButUnmerged: Yellow,
+		git.Untracked:          Red,
+	},
 }
 
-func ByStatus(s string, code git.StatusCode) string {
-	renderer, ok := status[code]
+func ByStatus(s string, code git.StatusCode, staged bool) string {
+	renderer, ok := status[staged][code]
 	if !ok {
 		return s
 	}

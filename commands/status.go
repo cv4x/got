@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math"
-	"os/exec"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -16,6 +14,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	gloss "github.com/charmbracelet/lipgloss"
 	"github.com/claire-west/got/color"
+	"github.com/claire-west/got/gitcmd"
 	"github.com/go-git/go-git/v5"
 )
 
@@ -48,6 +47,7 @@ type file struct {
 	category category
 	align    gloss.Position
 	path     string
+	staged   bool
 	status   git.StatusCode
 	extra    string
 }
@@ -109,7 +109,6 @@ var keys = keyMap{
 }
 
 type model struct {
-	worktree *git.Worktree
 	xy       dimensions
 	viewport viewport.Model
 	keys     keyMap
@@ -140,18 +139,9 @@ func (m model) Init() tea.Cmd {
 func (m model) process(files []file) {
 	for _, v := range files {
 		if v.category == Staged && v.align == gloss.Left {
-			opts := &git.RestoreOptions{
-				Files:  []string{v.path},
-				Staged: true,
-			}
-			if err := m.worktree.Restore(opts); err != nil {
-				log.Fatalf("Error unstaging file: %v", err)
-			}
+			gitcmd.Restore(v.path)
 		} else if (v.category == Unstaged || v.category == Untracked) && v.align == gloss.Right {
-			_, err := m.worktree.Add(v.path)
-			if err != nil {
-				log.Fatalf("Error staging file: %v", err)
-			}
+			gitcmd.Add(v.path)
 		}
 	}
 }
@@ -195,7 +185,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.WindowSizeMsg:
-		newWidth := min(76, msg.Width)
+		newWidth := min(80, msg.Width)
 		viewportWidth := newWidth - 4
 
 		m.xy.width = newWidth
@@ -253,13 +243,13 @@ func (m model) viewHeader() string {
 	var subtitle string
 	subtitleParts := make([]string, 0, 2)
 	if m.ahead > 0 {
-		subtitleParts = append(subtitleParts, fmt.Sprintf("ahead %d", m.ahead))
+		subtitleParts = append(subtitleParts, fmt.Sprintf("%d ▲", m.ahead))
 	}
 	if m.behind > 0 {
-		subtitleParts = append(subtitleParts, fmt.Sprintf("behind %d", m.behind))
+		subtitleParts = append(subtitleParts, fmt.Sprintf("▼ %d", m.behind))
 	}
 	if len(subtitleParts) > 0 {
-		subtitleText := strings.Join(subtitleParts, " • ")
+		subtitleText := strings.Join(subtitleParts, "")
 		subtitle = headerStyle.Render(subtitleText)
 	}
 
@@ -335,7 +325,7 @@ func (m model) viewContent() string {
 		if gloss.Width(text) > contentWidth-8 {
 			text = "…" + text[max(0, gloss.Width(text)-contentWidth+8):]
 		}
-		text = color.ByStatus(text, v.status)
+		text = color.ByStatus(text, v.status, v.staged)
 
 		switch v.align {
 		case gloss.Left:
@@ -372,28 +362,18 @@ func (m model) viewFooter() string {
 
 func prepare(r *git.Repository) *model {
 	h, _ := r.Head()
-	w, _ := r.Worktree()
 
-	gitstatus := exec.Command("git", "status", "--porcelain")
-	stdout, err := gitstatus.Output()
-	if err != nil {
-		panic("Failed to get output from \"git status\"")
-	}
-
-	// trim trailing newline
-	stdout = stdout[:len(stdout)-1]
-
-	lines := strings.Split(string(stdout), "\n")
+	lines := gitcmd.Status()
 	files := make([]file, 0, len(lines))
+
 	for _, v := range lines {
-		staged := git.StatusCode(v[0])
-		tracked := git.StatusCode(v[1])
-		path := v[3:]
+		staged := git.StatusCode(v.Staged)
+		tracked := git.StatusCode(v.Tracked)
 		if staged == git.Untracked && tracked == git.Untracked {
 			files = append(files, file{
 				category: Untracked,
 				align:    gloss.Left,
-				path:     path,
+				path:     v.Path,
 				status:   git.Untracked,
 			})
 			continue
@@ -402,25 +382,25 @@ func prepare(r *git.Repository) *model {
 			files = append(files, file{
 				category: Staged,
 				align:    gloss.Right,
-				path:     path,
+				path:     v.Path,
 				status:   staged,
+				staged:   true,
 			})
 		}
 		if tracked != git.Unmodified {
 			files = append(files, file{
 				category: Unstaged,
 				align:    gloss.Left,
-				path:     path,
+				path:     v.Path,
 				status:   tracked,
 			})
 		}
 	}
 
 	model := &model{
-		worktree: w,
-		clean:    len(files) == 0,
-		keys:     keys,
-		help:     help.New(),
+		clean: len(files) == 0,
+		keys:  keys,
+		help:  help.New(),
 		head: head{
 			name:     h.Name().Short(),
 			ref:      h.Hash().String(),
@@ -429,26 +409,8 @@ func prepare(r *git.Repository) *model {
 		files: files,
 	}
 
-	// TODO: clean this up
 	if model.head.isbranch {
-		gitremote := exec.Command("git", "remote")
-		stdout, err = gitremote.Output()
-		if err == nil {
-			// trim trailing newline
-			remote := string(stdout[:len(stdout)-1])
-
-			gitrevlist := exec.Command("git", "rev-list", "--left-right", "--count", model.head.name+"..."+remote+"/"+model.head.name)
-			stdout, err = gitrevlist.Output()
-			if err == nil {
-				// trim trailing newline
-				stdout := stdout[:len(stdout)-1]
-				log.Println(string(stdout))
-				ahead, _ := strconv.Atoi(string(stdout[0]))
-				model.ahead = ahead
-				behind, _ := strconv.Atoi(string(stdout[len(stdout)-1]))
-				model.behind = behind
-			}
-		}
+		model.ahead, model.behind = gitcmd.AheadBehind(model.head.name)
 	}
 
 	emptyStyle := gloss.NewStyle()
