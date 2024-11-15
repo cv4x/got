@@ -137,12 +137,20 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) process(files []file) {
+	restore := make([]string, 0, len(files))
+	add := make([]string, 0, len(files))
 	for _, v := range files {
 		if v.category == Staged && v.align == gloss.Left {
-			gitcmd.Restore(v.path)
+			restore = append(restore, v.path)
 		} else if (v.category == Unstaged || v.category == Untracked) && v.align == gloss.Right {
-			gitcmd.Add(v.path)
+			add = append(add, v.path)
 		}
+	}
+	if len(restore) > 0 {
+		gitcmd.Restore(restore...)
+	}
+	if len(add) > 0 {
+		gitcmd.Add(add...)
 	}
 }
 

@@ -52,15 +52,17 @@ func Status() []statusline {
 	return files
 }
 
-func Add(path string) {
-	_, err := execGit("add", path)
+func Add(paths ...string) {
+	args := append([]string{"add"}, paths...)
+	_, err := execGit(args...)
 	if err != nil {
 		log.Fatalf("Error staging file: %v", err)
 	}
 }
 
-func Restore(path string) {
-	_, err := execGit("restore", "--staged", path)
+func Restore(paths ...string) {
+	args := append([]string{"restore", "--staged"}, paths...)
+	_, err := execGit(args...)
 	if err != nil {
 		log.Fatalf("Error unstaging file: %v", err)
 	}
