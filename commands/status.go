@@ -332,15 +332,16 @@ func (m model) viewContent() string {
 		}
 		text = color.ByStatus(text, v.status, v.staged)
 
+		cursor := color.Magenta.Foreground(" ◈ ")
 		switch v.align {
 		case gloss.Left:
 			if i == m.selected {
-				text = text + color.Magenta.Foreground(" ◈")
+				text += cursor
 			}
 			line = text
 		case gloss.Right:
 			if i == m.selected {
-				text = color.Magenta.Foreground("◈ ") + text
+				text = cursor + text
 			}
 			line = strings.Repeat(" ", contentWidth-gloss.Width(text)) + text
 		}
