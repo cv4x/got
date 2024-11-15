@@ -13,8 +13,8 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	gloss "github.com/charmbracelet/lipgloss"
-	"github.com/claire-west/got/color"
-	"github.com/claire-west/got/gitcmd"
+	"github.com/cv4x/got/color"
+	"github.com/cv4x/got/gitcmd"
 	"github.com/go-git/go-git/v5"
 )
 

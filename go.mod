@@ -1,4 +1,4 @@
-module github.com/claire-west/got
+module github.com/cv4x/got
 
 go 1.22.4
 

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/claire-west/got/commands"
+	"github.com/cv4x/got/commands"
 	"github.com/go-git/go-git/v5"
 )
 
