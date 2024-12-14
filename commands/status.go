@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"os"
 	"slices"
 	"strings"
 
@@ -14,8 +15,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	gloss "github.com/charmbracelet/lipgloss"
 	"github.com/cv4x/got/color"
-	"github.com/cv4x/got/gitcmd"
-	"github.com/go-git/go-git/v5"
+	"github.com/cv4x/got/git"
 )
 
 var (
@@ -43,13 +43,40 @@ const (
 	Untracked category = "Untracked"
 )
 
+type action byte
+
+const (
+	stage action = iota
+	unstage
+	restore
+)
+
 type file struct {
 	category category
-	align    gloss.Position
 	path     string
 	staged   bool
 	status   git.StatusCode
 	extra    string
+	pending  map[action]bool
+}
+
+func (f file) position() gloss.Position {
+	if f.pending[stage] || (f.staged && !f.pending[unstage]) {
+		return gloss.Right
+	}
+	return gloss.Left
+}
+
+func (f file) text(maxWidth int) string {
+	text := string(f.status) + " " + f.path
+	// TODO truncate on file separators where possible
+	if gloss.Width(text) > maxWidth-8 {
+		text = "…" + text[max(0, gloss.Width(text)-maxWidth+8):]
+	}
+	if f.pending[restore] {
+		return color.BrightBlack.Foreground(text)
+	}
+	return color.ByStatus(text, f.status, f.staged)
 }
 
 type dimensions struct {
@@ -62,6 +89,8 @@ type keyMap struct {
 	Down   key.Binding
 	Left   key.Binding
 	Right  key.Binding
+	Top    key.Binding
+	Bottom key.Binding
 	Submit key.Binding
 	Quit   key.Binding
 }
@@ -73,8 +102,6 @@ func (k keyMap) ShortHelp() []key.Binding {
 func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Left},
-		{k.Down},
-		{k.Up},
 		{k.Right},
 		{k.Submit},
 		{k.Quit},
@@ -92,11 +119,19 @@ var keys = keyMap{
 	),
 	Left: key.NewBinding(
 		key.WithKeys("left", "h"),
-		key.WithHelp("←/h", "unstage   "),
+		key.WithHelp("←/h", "restore   "),
 	),
 	Right: key.NewBinding(
 		key.WithKeys("right", "l"),
-		key.WithHelp("→/l", "add   "),
+		key.WithHelp("→/l", "stage   "),
+	),
+	Top: key.NewBinding(
+		key.WithKeys("home"),
+		key.WithHelp("home", "top   "),
+	),
+	Bottom: key.NewBinding(
+		key.WithKeys("end"),
+		key.WithHelp("end", "bottom   "),
 	),
 	Submit: key.NewBinding(
 		key.WithKeys("enter", "y"),
@@ -122,10 +157,10 @@ type model struct {
 	selected int
 }
 
-func Status(r *git.Repository, args []string) {
+func Status(ref string, branch string, args []string) {
 	args = flags(args)
 
-	model := prepare(r)
+	model := prepare(ref, branch)
 	p := tea.NewProgram(model, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		log.Fatalf("Fatal error: %v", err)
@@ -137,20 +172,29 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) process(files []file) {
-	restore := make([]string, 0, len(files))
-	add := make([]string, 0, len(files))
+	// TODO make this more declarative
+	tounstage := make([]string, 0, len(files))
+	toadd := make([]string, 0, len(files))
+	torestore := make([]string, 0, len(files))
 	for _, v := range files {
-		if v.category == Staged && v.align == gloss.Left {
-			restore = append(restore, v.path)
-		} else if (v.category == Unstaged || v.category == Untracked) && v.align == gloss.Right {
-			add = append(add, v.path)
+		if v.pending[unstage] {
+			tounstage = append(tounstage, v.path)
+		}
+		if v.pending[stage] {
+			toadd = append(toadd, v.path)
+		}
+		if v.pending[restore] {
+			torestore = append(torestore, v.path)
 		}
 	}
-	if len(restore) > 0 {
-		gitcmd.Restore(restore...)
+	if len(tounstage) > 0 {
+		git.Unstage(tounstage...)
 	}
-	if len(add) > 0 {
-		gitcmd.Add(add...)
+	if len(toadd) > 0 {
+		git.Add(toadd...)
+	}
+	if len(torestore) > 0 {
+		git.Restore(torestore...)
 	}
 }
 
@@ -160,14 +204,34 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds []tea.Cmd
 	)
 
-	selectedFile := m.files[m.selected]
+	scroll := func() {
+		mid := m.viewport.VisibleLineCount() / 2
+		max := m.viewport.TotalLineCount()
+		if m.selected < mid {
+			m.viewport.GotoTop()
+		} else if m.selected > max-mid {
+			m.viewport.GotoBottom()
+		}
+
+		percentpos := float64(m.selected) / float64((len(m.files) - 1))
+		scrollto := int(float64(m.viewport.TotalLineCount()) * percentpos)
+		m.viewport.SetYOffset(scrollto - mid)
+	}
+
 	up := func() {
 		m.selected = (m.selected + len(m.files) - 1) % len(m.files)
+		scroll()
 	}
 	down := func() {
 		m.selected = (m.selected + 1) % len(m.files)
+		scroll()
+	}
+	to := func(pos int) {
+		m.selected = pos
+		scroll()
 	}
 
+	selectedFile := m.files[m.selected]
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch {
@@ -176,15 +240,32 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, keys.Down):
 			down()
 		case key.Matches(msg, keys.Left):
-			if selectedFile.align == gloss.Right {
-				m.files[m.selected].align = gloss.Left
-				down()
+			if selectedFile.pending[stage] {
+				selectedFile.pending[stage] = false
+			} else if selectedFile.category != Untracked && !selectedFile.pending[restore] &&
+				(selectedFile.pending[unstage] || (!selectedFile.staged && !selectedFile.pending[restore])) {
+				selectedFile.pending[restore] = true
+			} else if selectedFile.staged && !selectedFile.pending[unstage] {
+				selectedFile.pending[unstage] = true
+			} else {
+				break
 			}
+			down()
 		case key.Matches(msg, keys.Right):
-			if selectedFile.align == gloss.Left {
-				m.files[m.selected].align = gloss.Right
-				down()
+			if selectedFile.pending[restore] {
+				selectedFile.pending[restore] = false
+			} else if selectedFile.staged && selectedFile.pending[unstage] {
+				selectedFile.pending[unstage] = false
+			} else if !selectedFile.staged && !selectedFile.pending[stage] {
+				selectedFile.pending[stage] = true
+			} else {
+				break
 			}
+			down()
+		case key.Matches(msg, keys.Top):
+			to(0)
+		case key.Matches(msg, keys.Bottom):
+			to(len(m.files) - 1)
 		case key.Matches(msg, keys.Submit):
 			m.process(m.files)
 			return m, tea.Quit
@@ -326,14 +407,10 @@ func (m model) viewContent() string {
 		}
 
 		var line string
-		text := v.path
-		if gloss.Width(text) > contentWidth-8 {
-			text = "…" + text[max(0, gloss.Width(text)-contentWidth+8):]
-		}
-		text = color.ByStatus(text, v.status, v.staged)
+		text := v.text(contentWidth)
 
 		cursor := color.Magenta.Foreground(" ◈ ")
-		switch v.align {
+		switch v.position() {
 		case gloss.Left:
 			if i == m.selected {
 				text += cursor
@@ -366,10 +443,13 @@ func (m model) viewFooter() string {
 		strings.Repeat("─", max(1, rightFill)))
 }
 
-func prepare(r *git.Repository) *model {
-	h, _ := r.Head()
+func prepare(ref string, branch string) *model {
+	lines := git.Status()
+	if len(lines) == 0 {
+		fmt.Println("nothing to commit, working tree clean")
+		os.Exit(0)
+	}
 
-	lines := gitcmd.Status()
 	files := make([]file, 0, len(lines))
 
 	for _, v := range lines {
@@ -378,29 +458,34 @@ func prepare(r *git.Repository) *model {
 		if staged == git.Untracked && tracked == git.Untracked {
 			files = append(files, file{
 				category: Untracked,
-				align:    gloss.Left,
 				path:     v.Path,
 				status:   git.Untracked,
+				pending:  map[action]bool{},
 			})
 			continue
 		}
 		if staged != git.Unmodified {
 			files = append(files, file{
 				category: Staged,
-				align:    gloss.Right,
 				path:     v.Path,
 				status:   staged,
 				staged:   true,
+				pending:  map[action]bool{},
 			})
 		}
 		if tracked != git.Unmodified {
 			files = append(files, file{
 				category: Unstaged,
-				align:    gloss.Left,
 				path:     v.Path,
 				status:   tracked,
+				pending:  map[action]bool{},
 			})
 		}
+	}
+
+	headname := branch
+	if headname == "" {
+		headname = ref
 	}
 
 	model := &model{
@@ -408,15 +493,15 @@ func prepare(r *git.Repository) *model {
 		keys:  keys,
 		help:  help.New(),
 		head: head{
-			name:     h.Name().Short(),
-			ref:      h.Hash().String(),
-			isbranch: h.Name().IsBranch(),
+			name:     headname,
+			ref:      ref,
+			isbranch: branch != "",
 		},
 		files: files,
 	}
 
 	if model.head.isbranch {
-		model.ahead, model.behind = gitcmd.AheadBehind(model.head.name)
+		model.ahead, model.behind = git.AheadBehind(model.head.name)
 	}
 
 	emptyStyle := gloss.NewStyle()

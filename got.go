@@ -4,13 +4,14 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
 	"syscall"
 
 	"github.com/cv4x/got/commands"
-	"github.com/go-git/go-git/v5"
+	"github.com/cv4x/got/git"
 )
 
 const (
@@ -25,32 +26,33 @@ func main() {
 		os.Exit(0)
 	}()
 
-	r, err := wdRepo()
-	if err != nil {
+	ref, branch := git.CurrentRef()
+	if ref == "" {
 		panic("panic: no git repository")
+	}
+
+	// Output the colorized status before exiting
+	printstatus := func() {
+		stdout, err := exec.Command("git", "-c", "color.ui=always", "status").Output()
+		if err == nil {
+			fmt.Println(string(stdout))
+		}
 	}
 
 	args := flags()
 	if len(args) == 0 {
-		commands.Status(r, args)
+		commands.Status(ref, branch, args)
+		printstatus()
 	} else {
 		switch strings.ToLower(args[0]) {
 		case status:
-			commands.Status(r, args[1:])
+			commands.Status(ref, branch, args[1:])
+			printstatus()
 		default:
 			fmt.Printf("%s is not a known command\n\n", args[0])
 			flag.Usage()
 		}
 	}
-}
-
-func wdRepo() (*git.Repository, error) {
-	wd, err := os.Getwd()
-	if err != nil {
-		return nil, err
-	}
-
-	return git.PlainOpenWithOptions(wd, &git.PlainOpenOptions{DetectDotGit: true})
 }
 
 func flags() []string {

@@ -2,7 +2,7 @@ package color
 
 import (
 	gloss "github.com/charmbracelet/lipgloss"
-	"github.com/go-git/go-git/v5"
+	"github.com/cv4x/got/git"
 )
 
 func fg(c gloss.TerminalColor) func(...string) string {

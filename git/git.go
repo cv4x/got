@@ -1,4 +1,4 @@
-package gitcmd
+package git
 
 import (
 	"log"
@@ -26,14 +26,55 @@ type statusline struct {
 	Extra   string
 }
 
+type StatusCode byte
+
+const (
+	Unmodified         StatusCode = ' '
+	Untracked          StatusCode = '?'
+	Modified           StatusCode = 'M'
+	Added              StatusCode = 'A'
+	Deleted            StatusCode = 'D'
+	Renamed            StatusCode = 'R'
+	Copied             StatusCode = 'C'
+	UpdatedButUnmerged StatusCode = 'U'
+)
+
+func CurrentRef() (string, string) {
+	stdout, err := execGit("rev-parse", "--short", "HEAD")
+	ref := ""
+	if err != nil {
+		log.Fatalf("Failed to get output from \"git rev-parse\": %v", err)
+	} else {
+		ref = strings.Split(string(stdout), "\n")[0]
+	}
+
+	stdout, err = execGit("branch", "--show-current")
+	branch := ""
+	if err != nil {
+		log.Fatalf("Failed to get output from \"git branch\": %v", err)
+	} else {
+		branch = strings.Split(string(stdout), "\n")[0]
+	}
+
+	return ref, branch
+}
+
 func Status() []statusline {
 	stdout, err := execGit("status", "--porcelain")
 	if err != nil {
 		log.Fatalf("Failed to get output from \"git status\": %v", err)
 	}
+	if len(stdout) == 0 {
+		return nil
+	}
+
 	lines := strings.Split(string(stdout), "\n")
 	files := make([]statusline, 0, len(lines))
 	for _, v := range lines {
+		if v == "" {
+			continue
+		}
+
 		file := statusline{
 			Path:    v[3:],
 			Staged:  v[0],
@@ -60,11 +101,19 @@ func Add(paths ...string) {
 	}
 }
 
-func Restore(paths ...string) {
+func Unstage(paths ...string) {
 	args := append([]string{"restore", "--staged"}, paths...)
 	_, err := execGit(args...)
 	if err != nil {
 		log.Fatalf("Error unstaging file: %v", err)
+	}
+}
+
+func Restore(paths ...string) {
+	args := append([]string{"restore"}, paths...)
+	_, err := execGit(args...)
+	if err != nil {
+		log.Fatalf("Error restoring file: %v", err)
 	}
 }
 
