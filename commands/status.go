@@ -363,14 +363,14 @@ func (m model) viewSideBorder(top, mid, bot string) string {
 	}
 
 	scrollBar := "█\n█\n"
-	scrollBarHeight := gloss.Height(scrollBar)
+	scrollBarHeight := gloss.Height(scrollBar) - 1
 	scrollPercent := m.viewport.ScrollPercent()
 
 	var scroll int
 	if scrollPercent == 0 {
 		scroll = 0
 	} else {
-		scroll = int(math.Floor(scrollPercent*float64(borderHeight-scrollBarHeight-1))) + 1
+		scroll = int(math.Floor(scrollPercent * float64(borderHeight-scrollBarHeight)))
 	}
 
 	return fmt.Sprintf("%s\n%s%s%s%s\n",
