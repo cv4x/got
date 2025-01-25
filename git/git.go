@@ -10,6 +10,7 @@ import (
 func execGit(args ...string) ([]byte, error) {
 	stdout, err := exec.Command("git", args...).Output()
 	if err != nil {
+		log.Printf("Error while executing command: git %s\n\n%v", strings.Join(args, " "), err)
 		return nil, err
 	}
 	if len(stdout) > 0 {
@@ -97,7 +98,7 @@ func Add(paths ...string) {
 	args := append([]string{"add"}, paths...)
 	_, err := execGit(args...)
 	if err != nil {
-		log.Fatalf("Error staging file: %v", err)
+		log.Fatalf("Failed to stage files:%v", err)
 	}
 }
 
