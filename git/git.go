@@ -10,7 +10,7 @@ import (
 func execGit(args ...string) ([]byte, error) {
 	stdout, err := exec.Command("git", args...).Output()
 	if err != nil {
-		log.Printf("Error while executing command: git %s\n\n%v\n", strings.Join(args, " "), err)
+		log.Printf("Error while executing command:\n\ngit %s\n\n%v\n", strings.Join(args, " "), err)
 		return nil, err
 	}
 	if len(stdout) > 0 {
