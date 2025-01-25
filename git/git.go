@@ -10,7 +10,7 @@ import (
 func execGit(args ...string) ([]byte, error) {
 	stdout, err := exec.Command("git", args...).Output()
 	if err != nil {
-		log.Printf("Error while executing command: git %s\n\n%v", strings.Join(args, " "), err)
+		log.Printf("Error while executing command: git %s\n\n%v\n", strings.Join(args, " "), err)
 		return nil, err
 	}
 	if len(stdout) > 0 {
@@ -44,7 +44,7 @@ func CurrentRef() (string, string) {
 	stdout, err := execGit("rev-parse", "--short", "HEAD")
 	ref := ""
 	if err != nil {
-		log.Fatalf("Failed to get output from \"git rev-parse\": %v", err)
+		log.Fatalf("Failed to get output from \"git rev-parse\": %v\n", err)
 	} else {
 		ref = strings.Split(string(stdout), "\n")[0]
 	}
@@ -52,7 +52,7 @@ func CurrentRef() (string, string) {
 	stdout, err = execGit("branch", "--show-current")
 	branch := ""
 	if err != nil {
-		log.Fatalf("Failed to get output from \"git branch\": %v", err)
+		log.Fatalf("Failed to get output from \"git branch\": %v\n", err)
 	} else {
 		branch = strings.Split(string(stdout), "\n")[0]
 	}
@@ -63,7 +63,7 @@ func CurrentRef() (string, string) {
 func Status() []statusline {
 	stdout, err := execGit("status", "--porcelain")
 	if err != nil {
-		log.Fatalf("Failed to get output from \"git status\": %v", err)
+		log.Fatalf("Failed to get output from \"git status\": %v\n", err)
 	}
 	if len(stdout) == 0 {
 		return nil
@@ -98,7 +98,7 @@ func Add(paths ...string) {
 	args := append([]string{"add"}, paths...)
 	_, err := execGit(args...)
 	if err != nil {
-		log.Fatalf("Failed to stage files:%v", err)
+		log.Fatalf("Failed to stage files:%v\n", err)
 	}
 }
 
@@ -106,7 +106,7 @@ func Unstage(paths ...string) {
 	args := append([]string{"restore", "--staged"}, paths...)
 	_, err := execGit(args...)
 	if err != nil {
-		log.Fatalf("Error unstaging file: %v", err)
+		log.Fatalf("Error unstaging file: %v\n", err)
 	}
 }
 
@@ -114,7 +114,7 @@ func Restore(paths ...string) {
 	args := append([]string{"restore"}, paths...)
 	_, err := execGit(args...)
 	if err != nil {
-		log.Fatalf("Error restoring file: %v", err)
+		log.Fatalf("Error restoring file: %v\n", err)
 	}
 }
 
