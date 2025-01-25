@@ -10,7 +10,7 @@ import (
 func execGit(args ...string) ([]byte, error) {
 	stdout, err := exec.Command("git", args...).Output()
 	if err != nil {
-		log.Printf("Error while executing command:\n\ngit %s\n\n%v\n", strings.Join(args, " "), err)
+		log.Printf("Error while executing command:\ngit %s\n\n%v\n\n", strings.Join(args, " "), err)
 		return nil, err
 	}
 	if len(stdout) > 0 {
@@ -124,7 +124,13 @@ func AheadBehind(branch string) (int, int) {
 		return 0, 0
 	}
 	remote := string(remotebytes)
-	revlistBytes, err := execGit("rev-list", "--left-right", "--count", branch+"..."+remote+"/"+branch)
+	compareTo := remote + "/" + branch
+	remoteBranchExists, err := execGit("ls-remote", "--heads", remote, "refs/heads/"+branch)
+	if err != nil || len(remoteBranchExists) == 0 {
+		return 0, 0
+	}
+
+	revlistBytes, err := execGit("rev-list", "--left-right", "--count", branch+"..."+compareTo)
 	if err != nil {
 		return 0, 0
 	}
