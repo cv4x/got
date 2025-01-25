@@ -3,7 +3,6 @@ package git
 import (
 	"log"
 	"os/exec"
-	"strconv"
 	"strings"
 )
 
@@ -119,22 +118,25 @@ func Restore(paths ...string) {
 }
 
 func AheadBehind(branch string) (int, int) {
-	remotebytes, err := execGit("remote")
-	if err != nil {
-		return 0, 0
-	}
-	remote := string(remotebytes)
-	compareTo := remote + "/" + branch
-	remoteBranchExists, err := execGit("ls-remote", "--heads", remote, "refs/heads/"+branch)
-	if err != nil || len(remoteBranchExists) == 0 {
-		return 0, 0
-	}
+	// TODO: doing this synchronously impacts startup time. Consider a routine-based approach.
+	return 0, 0
 
-	revlistBytes, err := execGit("rev-list", "--left-right", "--count", branch+"..."+compareTo)
-	if err != nil {
-		return 0, 0
-	}
-	ahead, _ := strconv.Atoi(string(revlistBytes[0]))
-	behind, _ := strconv.Atoi(string(revlistBytes[len(revlistBytes)-1]))
-	return ahead, behind
+	// remotebytes, err := execGit("remote")
+	// if err != nil {
+	// 	return 0, 0
+	// }
+	// remote := string(remotebytes)
+	// compareTo := remote + "/" + branch
+	// remoteBranchExists, err := execGit("ls-remote", "--heads", remote, "refs/heads/"+branch)
+	// if err != nil || len(remoteBranchExists) == 0 {
+	// 	return 0, 0
+	// }
+
+	// revlistBytes, err := execGit("rev-list", "--left-right", "--count", branch+"..."+compareTo)
+	// if err != nil {
+	// 	return 0, 0
+	// }
+	// ahead, _ := strconv.Atoi(string(revlistBytes[0]))
+	// behind, _ := strconv.Atoi(string(revlistBytes[len(revlistBytes)-1]))
+	// return ahead, behind
 }
