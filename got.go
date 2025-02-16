@@ -26,8 +26,8 @@ func main() {
 		os.Exit(0)
 	}()
 
-	ref, branch := git.CurrentRef()
-	if ref == "" {
+	state := git.CurrentRef()
+	if state.Ref == "" {
 		panic("panic: no git repository")
 	}
 
@@ -41,12 +41,12 @@ func main() {
 
 	args := flags()
 	if len(args) == 0 {
-		commands.Status(ref, branch, args)
+		commands.Status(state, args)
 		printstatus()
 	} else {
 		switch strings.ToLower(args[0]) {
 		case status:
-			commands.Status(ref, branch, args[1:])
+			commands.Status(state, args[1:])
 			printstatus()
 		default:
 			fmt.Printf("%s is not a known command\n\n", args[0])

@@ -39,24 +39,32 @@ const (
 	UpdatedButUnmerged StatusCode = 'U'
 )
 
-func CurrentRef() (string, string) {
-	stdout, err := execGit("rev-parse", "--short", "HEAD")
-	ref := ""
+type RepoState struct {
+	Ref    string
+	Branch string
+	Dir    string
+}
+
+func CurrentRef() RepoState {
+	var state RepoState
+
+	stdout, err := execGit("rev-parse", "--show-toplevel", "--short", "HEAD")
 	if err != nil {
 		log.Fatalf("Failed to get output from \"git rev-parse\": %v\n", err)
 	} else {
-		ref = strings.Split(string(stdout), "\n")[0]
+		lines := strings.Split(string(stdout), "\n")
+		state.Dir = lines[0]
+		state.Ref = lines[1]
 	}
 
 	stdout, err = execGit("branch", "--show-current")
-	branch := ""
 	if err != nil {
 		log.Fatalf("Failed to get output from \"git branch\": %v\n", err)
 	} else {
-		branch = strings.Split(string(stdout), "\n")[0]
+		state.Branch = strings.Split(string(stdout), "\n")[0]
 	}
 
-	return ref, branch
+	return state
 }
 
 func Status() []statusline {

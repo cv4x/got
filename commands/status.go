@@ -153,14 +153,15 @@ type model struct {
 	ahead    int
 	behind   int
 	head     head
+	rootdir  string
 	files    []file
 	selected int
 }
 
-func Status(ref string, branch string, args []string) {
+func Status(state git.RepoState, args []string) {
 	args = flags(args)
 
-	model := prepare(ref, branch)
+	model := prepare(state)
 	p := tea.NewProgram(model, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		log.Fatalf("Fatal error: %v", err)
@@ -178,13 +179,13 @@ func (m model) process(files []file) {
 	torestore := make([]string, 0, len(files))
 	for _, v := range files {
 		if v.pending[unstage] {
-			tounstage = append(tounstage, v.path)
+			tounstage = append(tounstage, m.rootdir+"/"+v.path)
 		}
 		if v.pending[stage] {
-			toadd = append(toadd, v.path)
+			toadd = append(toadd, m.rootdir+"/"+v.path)
 		}
 		if v.pending[restore] {
-			torestore = append(torestore, v.path)
+			torestore = append(torestore, m.rootdir+"/"+v.path)
 		}
 	}
 	if len(tounstage) > 0 {
@@ -443,7 +444,7 @@ func (m model) viewFooter() string {
 		strings.Repeat("─", max(1, rightFill)))
 }
 
-func prepare(ref string, branch string) *model {
+func prepare(state git.RepoState) *model {
 	lines := git.Status()
 	if len(lines) == 0 {
 		fmt.Println("nothing to commit, working tree clean")
@@ -483,9 +484,9 @@ func prepare(ref string, branch string) *model {
 		}
 	}
 
-	headname := branch
+	headname := state.Branch
 	if headname == "" {
-		headname = ref
+		headname = state.Ref
 	}
 
 	model := &model{
@@ -494,10 +495,11 @@ func prepare(ref string, branch string) *model {
 		help:  help.New(),
 		head: head{
 			name:     headname,
-			ref:      ref,
-			isbranch: branch != "",
+			ref:      state.Ref,
+			isbranch: state.Branch != "",
 		},
-		files: files,
+		files:   files,
+		rootdir: state.Dir,
 	}
 
 	if model.head.isbranch {
